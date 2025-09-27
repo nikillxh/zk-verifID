@@ -19,38 +19,58 @@ sp1_zkvm::entrypoint!(main);
 
 use alloy_primitives::keccak256;
 use alloy_sol_types::SolType;
-use zkpdf_template_lib::{utils::generate_commitment, verify_gst_certificate, PublicValuesStruct};
+use zkpdf_template_lib::{utils::{gst_generate_commitment, pan_generate_commitment}, verify_gst_certificate, verify_pan_certificate, GSTValuesStruct, PANValuesStruct};
 
 pub fn main() {
-    // Read PDF bytes as input to the program.
-    // Behind the scenes, this compiles down to a custom system call which handles reading inputs
-    // from the prover.
+    // Read PDF bytes from the prover
     let pdf_bytes = sp1_zkvm::io::read::<Vec<u8>>();
 
-    // Verify the GST certificate and extract information.
-    let gst_cert =
-        verify_gst_certificate(pdf_bytes.clone()).expect("Failed to verify GST certificate");
+    // Try verifying GST first
+    if let Ok(gst_cert) = verify_gst_certificate(pdf_bytes.clone()) {
+        let document_commitment = gst_generate_commitment(&gst_cert);
+        let public_key_hash = keccak256(&gst_cert.signature.public_key);
 
-    // Generate commitment hash using the new function
-    let document_commitment = generate_commitment(&gst_cert);
-    let public_key_hash = keccak256(&gst_cert.signature.public_key);
+        let gst_bytes = GSTValuesStruct::abi_encode(&GSTValuesStruct {
+            gst_number: gst_cert.gst_number,
+            legal_name: gst_cert.legal_name,
+            signature_valid: gst_cert.signature.is_valid,
+            document_commitment: document_commitment
+                .as_slice()
+                .try_into()
+                .expect("Failed to convert document commitment to FixedBytes"),
+            public_key_hash: public_key_hash
+                .as_slice()
+                .try_into()
+                .expect("Failed to convert public key hash to FixedBytes"),
+        });
 
-    // Encode the public values of the program.
-    let bytes = PublicValuesStruct::abi_encode(&PublicValuesStruct {
-        gst_number: gst_cert.gst_number,
-        legal_name: gst_cert.legal_name,
-        signature_valid: gst_cert.signature.is_valid,
-        document_commitment: document_commitment
-            .as_slice()
-            .try_into()
-            .expect("Failed to convert document commitment to FixedBytes"),
-        public_key_hash: public_key_hash
-            .as_slice()
-            .try_into()
-            .expect("Failed to convert public key hash to FixedBytes"),
-    });
+        sp1_zkvm::io::commit_slice(&gst_bytes);
+        return; // Stop here since GST certificate was found
+    }
 
-    // Commit to the public values of the program. The final proof will have a commitment to all the
-    // bytes that were committed to.
-    sp1_zkvm::io::commit_slice(&bytes);
+    // If GST verification fails, try PAN
+    if let Ok(pan_cert) = verify_pan_certificate(pdf_bytes) {
+        let document_commitment = pan_generate_commitment(&pan_cert);
+        let public_key_hash = keccak256(&pan_cert.signature.public_key);
+
+        let pan_bytes = PANValuesStruct::abi_encode(&PANValuesStruct {
+            pan_number: pan_cert.pan_number,
+            legal_name: pan_cert.legal_name,
+            signature_valid: pan_cert.signature.is_valid,
+            document_commitment: document_commitment
+                .as_slice()
+                .try_into()
+                .expect("Failed to convert document commitment to FixedBytes"),
+            public_key_hash: public_key_hash
+                .as_slice()
+                .try_into()
+                .expect("Failed to convert public key hash to FixedBytes"),
+        });
+
+        sp1_zkvm::io::commit_slice(&pan_bytes);
+        return; // Stop here since PAN certificate was found
+    }
+
+    // If neither GST nor PAN was found, fail the program
+    panic!("No valid GST or PAN certificate found in PDF");
 }
