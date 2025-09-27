@@ -15,13 +15,15 @@
 //! ```
 
 use alloy_sol_types::SolType;
+use alloy_primitives::keccak256;
+use chrono::{NaiveDate, Utc};
 use clap::{Parser, ValueEnum};
 use serde::{Deserialize, Serialize};
 use sp1_sdk::{
     include_elf, HashableKey, ProverClient, SP1ProofWithPublicValues, SP1Stdin, SP1VerifyingKey,
 };
 use std::path::PathBuf;
-use zkpdf_template_lib::PublicValuesStruct;
+use zkpdf_template_lib::{GSTValuesStruct, PANValuesStruct};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 pub const ZKPDF_TEMPLATE_ELF: &[u8] = include_elf!("zkpdf-template-program");
@@ -127,59 +129,92 @@ fn main() {
     create_proof_fixture(&proof, &vk, args.system);
 }
 
-/// Create a fixture for the given proof.
+/// Create a fixture for the given proof (PAN or GST).
 fn create_proof_fixture(
     proof: &SP1ProofWithPublicValues,
     vk: &SP1VerifyingKey,
     system: ProofSystem,
 ) {
-    // Deserialize the public values.
     let bytes = proof.public_values.as_slice();
-    let PublicValuesStruct {
+
+    // Try decoding as GST first
+    if let Ok(GSTValuesStruct {
         gst_number,
         legal_name,
         signature_valid,
         document_commitment,
         public_key_hash,
-    } = PublicValuesStruct::abi_decode(bytes).unwrap();
+    }) = GSTValuesStruct::abi_decode(bytes)
+    {
+        let fixture = SP1GSTProofFixture {
+            gst_number,
+            legal_name,
+            signature_valid,
+            document_commitment: format!("0x{}", hex::encode(document_commitment.as_ref() as &[u8])),
+            public_key_hash: format!("0x{}", hex::encode(public_key_hash.as_ref() as &[u8])),
+            vkey: vk.bytes32().to_string(),
+            public_values: format!("0x{}", hex::encode(bytes)),
+            proof: format!("0x{}", hex::encode(proof.bytes())),
+        };
 
-    // Create the testing fixture so we can test things end-to-end.
-    let fixture = SP1GSTProofFixture {
-        gst_number,
+        save_fixture(&fixture, system);
+        return;
+    }
+
+    // If not GST, try decoding as PAN
+    if let Ok(PANValuesStruct {
+        pan_number,
         legal_name,
+        dob,
         signature_valid,
-        document_commitment: format!("0x{}", hex::encode(document_commitment.as_ref() as &[u8])),
-        public_key_hash: format!("0x{}", hex::encode(public_key_hash.as_ref() as &[u8])),
-        vkey: vk.bytes32().to_string(),
-        public_values: format!("0x{}", hex::encode(bytes)),
-        proof: format!("0x{}", hex::encode(proof.bytes())),
-    };
+        document_commitment,
+        public_key_hash,
+    }) = PANValuesStruct::abi_decode(bytes)
+    {
+        // commitments
+        let pan_number_commitment =
+            format!("0x{}", hex::encode(keccak256(pan_number.as_bytes())));
+        let holder_name =
+            format!("0x{}", hex::encode(keccak256(legal_name.as_bytes())));
+        let dob_commitment =
+            format!("0x{}", hex::encode(keccak256(dob.as_bytes())));
 
-    // The verification key is used to verify that the proof corresponds to the execution of the
-    // program on the given input.
-    //
-    // Note that the verification key stays the same regardless of the input.
-    println!("Verification Key: {}", fixture.vkey);
+        // age calculation
+        let dob_parsed = NaiveDate::parse_from_str(&dob, "%Y-%m-%d")
+            .expect("DOB must be in YYYY-MM-DD format");
+        let today = Utc::now().naive_utc().date();
+        let age = today.years_since(dob_parsed).unwrap_or(0);
+        let age_proof_over18 = age >= 18;
 
-    // The public values are the values which are publicly committed to by the zkVM.
-    //
-    // If you need to expose the inputs or outputs of your program, you should commit them in
-    // the public values.
-    println!("Public Values: {}", fixture.public_values);
+        let fixture = SP1PANProofFixture {
+            signature_valid,
+            document_commitment: format!("0x{}", hex::encode(document_commitment.as_ref() as &[u8])),
+            public_key_hash: format!("0x{}", hex::encode(public_key_hash.as_ref() as &[u8])),
+            vkey: vk.bytes32().to_string(),
+            public_values: format!("0x{}", hex::encode(bytes)),
+            proof: format!("0x{}", hex::encode(proof.bytes())),
+            pan_number_commitment,
+            holder_name,
+            dob_commitment,
+            age_proof_over18,
+        };
 
-    // The proof proves to the verifier that the program was executed with some inputs that led to
-    // the give public values.
-    println!("Proof Bytes: {}", fixture.proof);
+        save_fixture(&fixture, system);
+        return;
+    }
 
+    panic!("Public values could not be decoded as GST or PAN struct!");
+}
 
-    User uploads credential → zkVM runs → outputs proof JSON fixture.
+/// Helper to save fixture JSON
+fn save_fixture<T: serde::Serialize>(fixture: &T, system: ProofSystem) {
+    println!("Verification Key: {}", serde_json::to_string_pretty(&fixture).unwrap());
 
-    // Save the fixture to a file.
     let fixture_path = PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("../contracts/src/fixtures");
     std::fs::create_dir_all(&fixture_path).expect("failed to create fixture path");
     std::fs::write(
         fixture_path.join(format!("{:?}-fixture.json", system).to_lowercase()),
-        serde_json::to_string_pretty(&fixture).unwrap(),
+        serde_json::to_string_pretty(fixture).unwrap(),
     )
     .expect("failed to write fixture");
 }

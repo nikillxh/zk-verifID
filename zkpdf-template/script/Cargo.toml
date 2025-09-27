@@ -35,6 +35,8 @@ axum = "0.7"
 tokio = { version = "1.0", features = ["full"] }
 tower-http = { version = "0.5", features = ["cors"] }
 tracing-subscriber = "0.3"
+chrono = "0.4.42"
+alloy-primitives.workspace = true
 
 [build-dependencies]
 sp1-build = "5.0.8"

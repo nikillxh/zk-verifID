@@ -31,6 +31,7 @@ sol! {
     struct PANValuesStruct {
         string pan_number;
         string legal_name;
+        string dob;
         bool signature_valid;
         bytes32 document_commitment;
         bytes32 public_key_hash;
@@ -75,9 +76,10 @@ pub struct PANCertificate {
     pub pan_number: String,
     pub legal_name: String,
     pub signature: PdfSignatureResult,
+    pub dob: String,
 }
 
-/// PAN Certificate verification function that extracts legal name and PAN number
+/// PAN Certificate verification function that extracts legal name, PAN number, and DOB
 pub fn verify_pan_certificate(pdf_bytes: Vec<u8>) -> Result<PANCertificate, PANVerificationError> {
     let verified_content = verify_and_extract(pdf_bytes)
         .map_err(|e| PANVerificationError::PdfVerificationFailed(e.to_string()))?;
@@ -95,7 +97,7 @@ pub fn verify_pan_certificate(pdf_bytes: Vec<u8>) -> Result<PANCertificate, PANV
         .map(|m| m.as_str().to_string())
         .ok_or(PANVerificationError::PANNumberNotFound)?;
 
-    // Legal name pattern (similar approach to GST, adjust keywords if needed)
+    // Legal name pattern (adjust keywords based on actual PDF text)
     let legal_name_pattern =
         regex::Regex::new(r"Name\s*([A-Za-z\s&.,]+?)(?:\n|Father|DOB|$)")
             .map_err(|e| PANVerificationError::RegexCompilationFailed(e.to_string()))?;
@@ -106,9 +108,21 @@ pub fn verify_pan_certificate(pdf_bytes: Vec<u8>) -> Result<PANCertificate, PANV
         .map(|m| m.as_str().trim().to_string())
         .ok_or(PANVerificationError::LegalNameNotFound)?;
 
+    // DOB pattern (usually in DD/MM/YYYY format on PAN card)
+    let dob_pattern =
+        regex::Regex::new(r"(\d{2}/\d{2}/\d{4})")
+            .map_err(|e| PANVerificationError::RegexCompilationFailed(e.to_string()))?;
+
+    let dob = dob_pattern
+        .captures(&full_text)
+        .and_then(|cap| cap.get(1))
+        .map(|m| m.as_str().trim().to_string())
+        .ok_or(PANVerificationError::DOBNotFound)?;
+
     Ok(PANCertificate {
         pan_number,
         legal_name,
         signature: verified_content.signature,
+        dob,
     })
 }

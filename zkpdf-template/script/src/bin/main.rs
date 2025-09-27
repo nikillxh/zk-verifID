@@ -17,7 +17,7 @@
 use alloy_sol_types::SolType;
 use clap::Parser;
 use sp1_sdk::{include_elf, ProverClient, SP1Stdin};
-use zkpdf_template_lib::PublicValuesStruct;
+use zkpdf_template_lib::{GSTValuesStruct, PANValuesStruct};
 
 /// The ELF (executable and linkable format) file for the Succinct RISC-V zkVM.
 pub const ZKPDF_TEMPLATE_ELF: &[u8] = include_elf!("zkpdf-template-program");
@@ -35,7 +35,7 @@ struct Args {
     #[arg(long)]
     prove: bool,
 
-    #[arg(long, default_value = "../samples/GST-certificate.pdf")]
+    #[arg(long, default_value = "../samples/PAN-card.pdf")]
     pdf_path: String,
 }
 
@@ -73,8 +73,8 @@ fn main() {
         println!("Program executed successfully.");
 
         // Read the output.
-        let decoded = PublicValuesStruct::abi_decode(output.as_slice()).unwrap();
-        let PublicValuesStruct {
+        let decoded = GSTValuesStruct::abi_decode(output.as_slice()).unwrap();
+        let GSTValuesStruct {
             gst_number,
             legal_name,
             signature_valid,
@@ -119,14 +119,16 @@ fn main() {
         println!("Program executed successfully.");
 
         // Read the output.
-        let decoded = PublicValuesStruct::abi_decode(output.as_slice()).unwrap();
-        let PublicValuesStruct {
-            gst_number,
+        let decoded = PANValuesStruct::abi_decode(output.as_slice()).unwrap();
+        let PANValuesStruct {
             signature_valid,
             document_commitment,
             public_key_hash,
+            pan_number,
+            legal_name,
+            dob,
         } = decoded;
-        println!("PAN Number: {}", gst_number);
+        println!("PAN Number: {}", pan_number);
         println!("Signature Valid: {}", signature_valid);
         println!(
             "Document Commitment: 0x{}",

@@ -25,7 +25,7 @@ pub fn main() {
     // Read PDF bytes from the prover
     let pdf_bytes = sp1_zkvm::io::read::<Vec<u8>>();
 
-    // Try verifying GST first
+    // GST
     if let Ok(gst_cert) = verify_gst_certificate(pdf_bytes.clone()) {
         let document_commitment = gst_generate_commitment(&gst_cert);
         let public_key_hash = keccak256(&gst_cert.signature.public_key);
@@ -48,7 +48,7 @@ pub fn main() {
         return; // Stop here since GST certificate was found
     }
 
-    // If GST verification fails, try PAN
+    // PAN
     if let Ok(pan_cert) = verify_pan_certificate(pdf_bytes) {
         let document_commitment = pan_generate_commitment(&pan_cert);
         let public_key_hash = keccak256(&pan_cert.signature.public_key);
@@ -65,6 +65,7 @@ pub fn main() {
                 .as_slice()
                 .try_into()
                 .expect("Failed to convert public key hash to FixedBytes"),
+            dob: pan_cert.dob,
         });
 
         sp1_zkvm::io::commit_slice(&pan_bytes);

@@ -69,6 +69,7 @@ pub enum PANVerificationError {
     RegexCompilationFailed(String),
     PANNumberNotFound,
     LegalNameNotFound,
+    DOBNotFound,
 }
 
 
@@ -86,6 +87,9 @@ impl fmt::Display for PANVerificationError {
             }
             PANVerificationError::LegalNameNotFound => {
                 write!(f, "Legal name not found in PDF")
+            }
+            PANVerificationError::DOBNotFound => {
+                write!(f, "DOB not found in PDF")
             }
         }
     }
