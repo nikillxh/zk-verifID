@@ -1,0 +1,10 @@
+[package]
+name = "zkpdf-template-lib"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+alloy-sol-types = { workspace = true }
+zkpdf-lib = { workspace = true }
+regex =  { workspace = true}
+alloy-primitives = { workspace = true}
