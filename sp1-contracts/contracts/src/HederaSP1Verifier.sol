@@ -12,8 +12,8 @@ interface ISP1Verifier {
 contract HederaSP1Verifier {
     ISP1Verifier public sp1Verifier;
 
-    constructor(address _sp1Verifier) {
-        sp1Verifier = ISP1Verifier(_sp1Verifier);
+    constructor() {
+        sp1Verifier = ISP1Verifier(0x3B6041173B80E77f038f3F2C0f9744f04837185e);
     }
 
     function verifySuccinctProof(
