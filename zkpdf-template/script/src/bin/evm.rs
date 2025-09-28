@@ -34,7 +34,7 @@ pub const ZKPDF_TEMPLATE_ELF: &[u8] = include_elf!("zkpdf-template-program");
 struct EVMArgs {
     #[arg(long, value_enum, default_value = "groth16")]
     system: ProofSystem,
-    #[arg(long, default_value = "../samples/GST-certificate.pdf")]
+    #[arg(long, default_value = "../samples/PAN-card.pdf")]
     pdf_path: String,
 }
 

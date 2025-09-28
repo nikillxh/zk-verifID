@@ -49,7 +49,7 @@ pub fn main() {
     }
 
     // PAN
-    if let Ok(pan_cert) = verify_pan_certificate(pdf_bytes) {
+    if let Ok(pan_cert) = verify_pan_certificate(pdf_bytes.clone()) {
         let document_commitment = pan_generate_commitment(&pan_cert);
         let public_key_hash = keccak256(&pan_cert.signature.public_key);
 
